@@ -3,7 +3,7 @@ import {Link, useNavigate, useParams} from 'react-router-dom';
 import Modal from '../UI/Modal.jsx';
 import EventForm from './EventForm.jsx';
 import {useMutation, useQuery} from "@tanstack/react-query";
-import {fetchEvent, updateEvent} from "../../util/http.js";
+import {fetchEvent, queryClient, updateEvent} from "../../util/http.js";
 import ErrorBlock from "../UI/ErrorBlock.jsx";
 import LoadingIndicator from "../UI/LoadingIndicator.jsx";
 
@@ -18,6 +18,24 @@ export default function EditEvent() {
 
   const { mutate } = useMutation({
     mutationFn: updateEvent,
+    onMutate: async (data) => {
+      const newEvent = data.event;
+
+      await queryClient.cancelQueries({queryKey: ['events', params.id]}); // Cancel other queries to avoid clashing actions
+      const previousEvent = queryClient.getQueryData(['events', params.id]);
+
+      queryClient.setQueryData(['events', params.id], newEvent); // Optimistically update
+
+      return { previousEvent }; // This is our context in onError
+    },
+    onError: (error, data, context) => {
+      // Rollback our optimistic update if failure
+      queryClient.setQueryData(['events', params.id], context.previousEvent);
+    },
+    // If mutation finished we fetch the latest data in our backend to not be out of sync
+    onSettled: () => {
+      queryClient.invalidateQueries(['events', params.id]);
+    }
   })
 
   function handleSubmit(formData) {
